@@ -18,6 +18,25 @@ spring:
     hibernate:
       ddl-auto: none
     open-in-view: false
+  sql:
+    init:
+      mode: always
+
+account-service:
+  service-id: ${ACCOUNT_SERVICE_SERVICE_ID:account-service}
+
+eureka:
+  client:
+    enabled: ${EUREKA_CLIENT_ENABLED:true}
+    register-with-eureka: ${EUREKA_REGISTER_WITH_EUREKA:true}
+    fetch-registry: ${EUREKA_FETCH_REGISTRY:true}
+    serviceUrl:
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: ${EUREKA_INSTANCE_PREFER_IP_ADDRESS:true}
+    instance-id: ${spring.application.name}:${server.port}
+    statusPageUrlPath: /actuator/info
+    healthCheckUrlPath: /health
 
 management:
   endpoints:
@@ -56,10 +75,21 @@ resilience4j:
         failure-rate-threshold: 50
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
+      accountService:
+        register-health-indicator: true
+        sliding-window-type: count_based
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
   bulkhead:
     instances:
       helloWorld:
         max-concurrent-calls: 25
+        max-wait-duration: 0
+      accountService:
+        max-concurrent-calls: 50
         max-wait-duration: 0
 
 logging:
