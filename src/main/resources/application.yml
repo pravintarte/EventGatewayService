@@ -1,0 +1,68 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: event-gateway-api
+  datasource:
+    url: jdbc:h2:mem:eventgateway;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,loggers,circuitbreakers,circuitbreakerevents,bulkheads
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    export:
+      zipkin:
+        endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Event Gateway API
+    description: Spring Boot skeleton for event gateway microservice capabilities.
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      helloWorld:
+        register-health-indicator: true
+        sliding-window-type: count_based
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+  bulkhead:
+    instances:
+      helloWorld:
+        max-concurrent-calls: 25
+        max-wait-duration: 0
+
+logging:
+  level:
+    root: INFO
+    com.eventgateway.api: DEBUG

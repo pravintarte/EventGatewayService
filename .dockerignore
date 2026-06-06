@@ -1,0 +1,7 @@
+target/*
+!target/event-gateway-api.jar
+.idea/
+*.iml
+.git/
+.gitignore
+README.md

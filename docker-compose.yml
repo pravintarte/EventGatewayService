@@ -1,0 +1,18 @@
+services:
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: event-gateway-zipkin
+    ports:
+      - "9411:9411"
+
+  event-gateway-api:
+    build:
+      context: .
+    container_name: event-gateway-api
+    depends_on:
+      - zipkin
+    environment:
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8080:8080"
