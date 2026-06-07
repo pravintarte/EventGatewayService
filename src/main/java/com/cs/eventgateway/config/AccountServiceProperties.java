@@ -3,6 +3,7 @@ package com.cs.eventgateway.config;
 import java.net.URI;
 import java.time.Duration;
 
+import com.cs.eventgateway.contract.AccountServiceHttpContract;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -29,14 +30,14 @@ public record AccountServiceProperties(
         String internalToken
 ) {
 
-    private static final String DEFAULT_SERVICE_ID = "account-service";
+    private static final String DEFAULT_SERVICE_ID = AccountServiceHttpContract.SERVICE_ID;
     private static final URI DEFAULT_URL = URI.create("http://localhost:8081");
     private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(5);
-    private static final String DEFAULT_INTERNAL_CALLER_HEADER = "X-Internal-Caller";
-    private static final String DEFAULT_INTERNAL_TOKEN_HEADER = "X-Internal-Token";
-    private static final String DEFAULT_INTERNAL_CALLER = "event-gateway-api";
-    private static final String DEFAULT_INTERNAL_TOKEN = "local-dev-token";
+    private static final String DEFAULT_INTERNAL_CALLER_HEADER = AccountServiceHttpContract.DEFAULT_INTERNAL_CALLER_HEADER;
+    private static final String DEFAULT_INTERNAL_TOKEN_HEADER = AccountServiceHttpContract.DEFAULT_INTERNAL_TOKEN_HEADER;
+    private static final String DEFAULT_INTERNAL_CALLER = AccountServiceHttpContract.DEFAULT_INTERNAL_CALLER;
+    private static final String DEFAULT_INTERNAL_TOKEN = AccountServiceHttpContract.DEFAULT_INTERNAL_TOKEN;
 
     public AccountServiceProperties {
         if (serviceId == null || serviceId.isBlank()) {

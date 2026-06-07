@@ -6,6 +6,67 @@ The gateway accepts transaction events from upstream systems, stores each event
 idempotently, and synchronously calls an internal Account Service to apply the
 transaction. Events remain queryable even when Account Service is unavailable.
 
+## Architecture Overview
+
+Event Gateway is the public ingestion boundary. It owns event receipt,
+idempotency, validation, event ordering for listings, trace propagation, and
+resilient calls to Account Service. Account Service owns account transaction
+application and balance computation. Each service has its own embedded H2
+database and can run independently.
+
+```mermaid
+flowchart LR
+    Client["Client / Upstream System"]
+    Registry["Eureka Service Registry"]
+    Gateway["Event Gateway API<br/>port 8080<br/>H2 event ledger"]
+    Account["Account Service<br/>port 8081<br/>H2 account ledger"]
+    Zipkin["Zipkin<br/>port 9411"]
+
+    Client -->|"POST /events<br/>GET /events<br/>GET /accounts/*"| Gateway
+    Gateway -->|"registers / resolves services"| Registry
+    Account -->|"registers account-service"| Registry
+    Gateway -->|"POST /accounts/{id}/transactions<br/>X-Trace-Id + Idempotency-Key"| Account
+    Gateway -->|"GET /accounts/{id}/balance"| Account
+    Gateway -->|"spans"| Zipkin
+    Account -->|"spans"| Zipkin
+```
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant G as Event Gateway
+    participant GL as Gateway H2 Ledger
+    participant A as Account Service
+    participant AL as Account H2 Ledger
+
+    C->>G: POST /events with eventId
+    G->>G: Validate request and establish traceId
+    G->>GL: Insert event if eventId is new
+    alt exact duplicate
+        G-->>C: 200 OK with existing event
+    else new event
+        G->>A: POST /accounts/{id}/transactions<br/>X-Trace-Id, Idempotency-Key
+        A->>AL: Apply CREDIT/DEBIT idempotently
+        A-->>G: 204 No Content
+        G->>GL: Mark APPLIED
+        G-->>C: 201 Created
+    else Account Service unavailable
+        G->>GL: Mark APPLY_FAILED and schedule retry
+        G-->>C: 202 Accepted
+    end
+```
+
+### Design Choices
+
+- Event Gateway stores events before calling Account Service so inbound events are not lost during downstream outages.
+- Account Service computes balances from its own ledger so balance logic stays in the account domain and Gateway remains an ingestion/proxy boundary.
+- Both services use separate in-memory H2 databases to make service separation explicit and runnable without external database setup.
+- `eventId` is used as the Gateway idempotency key and as the Account Service `Idempotency-Key` header, which makes retries safe.
+- Event listings sort by `eventTimestamp`, not arrival time, so out-of-order delivery does not affect read behavior.
+- Gateway uses Resilience4j circuit breaker and bulkhead around Account Service calls. The circuit breaker stops repeated downstream failures from consuming request capacity; the bulkhead caps concurrent downstream calls so Account Service slowness does not exhaust Gateway resources.
+- Gateway returns `202 Accepted` for unavailable Account Service during `POST /events` because the event has been durably stored and can be retried later. Balance read-through calls return `503` because they depend directly on live Account Service data.
+- `X-Trace-Id` is propagated over HTTP and written into structured logs in both services so a single client request can be followed across service boundaries.
+
 ## Baseline Stack
 
 - Java 21
@@ -117,6 +178,54 @@ Primary error codes:
 - `ACCOUNT_SERVICE_UNAVAILABLE`: Account Service could not be reached for a read-through request.
 - `INTERNAL_SERVER_ERROR`: unexpected server-side failure.
 
+## Setup and Startup
+
+Prerequisites:
+
+- Java 21 JDK
+- Maven 3.9+
+- Docker Desktop, only if using the per-service Docker Compose files
+- A Eureka-compatible service registry running on `http://localhost:8761`
+- Optional Zipkin on `http://localhost:9411` for trace visualization
+
+Recommended local startup order:
+
+1. Start the service registry first. Both services are Eureka clients and use the registry for discovery.
+2. Start Event Gateway second. Gateway can start before Account Service because it has a fallback Account Service URL and degrades safely when Account Service is unavailable.
+3. Start Account Service third. Once it registers as `account-service`, Gateway can discover it through Eureka; until then Gateway uses `ACCOUNT_SERVICE_DEFAULT_URL`.
+
+Manual startup from separate terminals:
+
+```powershell
+# Terminal 1: service registry
+# Start your Eureka server so it is available at http://localhost:8761
+```
+
+```powershell
+# Terminal 2: Event Gateway
+cd C:\Users\pravi\IdeaProjects\EventGatewayService\EventGatewayService
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+$env:EUREKA_DEFAULT_ZONE = "http://localhost:8761/eureka/"
+$env:ACCOUNT_SERVICE_DEFAULT_URL = "http://localhost:8081"
+mvn spring-boot:run
+```
+
+```powershell
+# Terminal 3: Account Service
+cd C:\Users\pravi\IdeaProjects\EventGatewayService\AccountSvc
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+$env:EUREKA_DEFAULT_ZONE = "http://localhost:8761/eureka/"
+mvn spring-boot:run
+```
+
+Health checks:
+
+- Event Gateway: `GET http://localhost:8080/health`
+- Account Service: `GET http://localhost:8081/health`
+- Eureka: `GET http://localhost:8761`
+
 ## Service Discovery
 
 This service is configured as a Eureka client. On startup it registers itself
@@ -192,7 +301,9 @@ or has no healthy `account-service` instance, the gateway uses
 `ACCOUNT_SERVICE_DEFAULT_URL`. If the fallback URL is also unavailable, the
 gateway still persists the event and returns `202 Accepted` with status
 `APPLY_FAILED`. Apply calls include the event id as an `Idempotency-Key` header
-so Account Service can safely deduplicate gateway retries.
+so Account Service can safely deduplicate gateway retries. Gateway also sends
+`X-Trace-Id` so one external request can be correlated across Gateway and
+Account Service logs.
 
 ## Structured Logging
 
@@ -205,12 +316,35 @@ Each log line includes `timestamp`, `level`, `serviceName`, `traceId`, `spanId`,
 request they are emitted as empty strings so downstream log queries can rely on
 stable fields.
 
-## Acceptance Tests
+`GET /health` returns the public health envelope with basic diagnostics,
+including database connectivity. Actuator metrics are exposed under
+`/actuator/metrics`; event submissions increment the custom
+`event_gateway.events.submitted` counter tagged by apply status and duplicate
+flag.
 
-Cucumber acceptance tests run through Maven using the JUnit Platform. They cover
-event submission happy path, validation failure, duplicate idempotency,
-duplicate conflict handling, out-of-order event listing, and Account Service
-unavailable behavior.
+## Automated Tests
+
+All Gateway tests run with the standard Maven test lifecycle:
+
+```powershell
+mvn clean test
+```
+
+The suite includes:
+
+- Core event functionality: idempotency, duplicate conflict handling, out-of-order event listing, CREDIT/DEBIT forwarding, and validation failures.
+- Resiliency behavior: Account Service apply failure, durable `APPLY_FAILED` handling, retry backoff, and circuit breaker open behavior.
+- Trace propagation: inbound `X-Trace-Id` handling, response echoing, and outbound Account Service header propagation.
+- Observability: health response diagnostics and custom event submission metrics.
+- Contract tests: Pact consumer tests for Account Service apply, rejection, balance read, and account-not-found behavior.
+- Full Gateway-to-Account-Service HTTP flow: `GatewayAccountServiceFlowIntegrationTest` starts Gateway on a random port and an embedded contract-faithful Account Service HTTP server, submits CREDIT and DEBIT events, verifies idempotent duplicate handling, then reads the computed balance through Gateway.
+- Cucumber acceptance behavior: event submission happy path, validation failure, duplicate idempotency, duplicate conflict handling, out-of-order event listing, and Account Service unavailable behavior.
+
+Run only the full Gateway-to-Account-Service flow:
+
+```powershell
+mvn "-Dtest=GatewayAccountServiceFlowIntegrationTest" test
+```
 
 Run only the Cucumber acceptance suite:
 
@@ -218,11 +352,35 @@ Run only the Cucumber acceptance suite:
 mvn -Dtest=RunCucumberAcceptanceTest test
 ```
 
-Run all unit, integration, and acceptance tests:
+## PactFlow Contract Tests
+
+Event Gateway is the Pact consumer for Account Service. The HTTP contract is
+documented in `docs/account-service-contract.md` and generated by
+`AccountServicePactConsumerTest`.
+
+Generate the consumer pact locally:
 
 ```powershell
-mvn clean test
+mvn "-Dtest=AccountServicePactConsumerTest" test
 ```
+
+The generated pact is written to:
+
+```text
+target/pacts/event-gateway-api-account-service.json
+```
+
+Publish the pact to PactFlow from CI:
+
+```powershell
+$env:PACT_BROKER_BASE_URL = "https://<your-org>.pactflow.io"
+$env:PACT_BROKER_TOKEN = "<pactflow-token>"
+$env:PACT_CONSUMER_BRANCH = "main"
+mvn "-Dpacticipant.version=<git-sha-or-build-number>" pact:publish
+```
+
+Account Service must verify this pact as the provider and publish verification
+results back to PactFlow before either service is deployed.
 
 Published test results:
 
@@ -233,24 +391,41 @@ Published test results:
 
 ## Local Build
 
-Use a Java 21 JDK before running Maven.
+Use a Java 21 JDK before running Maven. `mvn clean test` runs the unit,
+integration, contract, and acceptance suites without requiring Docker or a
+manually running Account Service.
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 mvn clean test
-mvn spring-boot:run
 ```
 
 ## Docker
 
-Build the executable Spring Boot jar first. The jar contains the application
-classes and runtime dependencies, and the Docker image only copies that
-pre-built executable.
+This repository intentionally keeps its Docker Compose file scoped to Event
+Gateway and Zipkin. Account Service has its own Docker Compose file in the
+sibling `AccountSvc` repository. This preserves independent service ownership
+while still allowing each service to be containerized locally.
+
+Build the Event Gateway executable Spring Boot jar first. The jar contains the
+application classes and runtime dependencies, and the Docker image only copies
+that pre-built executable.
 
 ```powershell
 mvn clean package
 docker compose up --build
 ```
 
-Zipkin UI is available at `http://localhost:9411`.
+When using Docker for the whole system, start the service registry first, start
+the Event Gateway compose stack second, then start Account Service from the
+sibling repository:
+
+```powershell
+cd C:\Users\pravi\IdeaProjects\EventGatewayService\AccountSvc
+mvn clean package
+docker compose up --build
+```
+
+Zipkin UI from the Event Gateway compose stack is available at
+`http://localhost:9411`.

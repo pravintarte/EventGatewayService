@@ -13,6 +13,7 @@ import com.cs.eventgateway.dto.event.EventType;
 import com.cs.eventgateway.dto.event.TransactionEventRequest;
 import com.cs.eventgateway.entity.ApplyStatus;
 import com.cs.eventgateway.service.EventLedgerService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -51,7 +52,8 @@ class EventControllerTest {
     @Test
     void submitEvent_whenServiceReportsNewAppliedEvent_returnsCreatedEnvelopeWithEventCreatedCode() {
         EventLedgerService eventLedgerService = mock(EventLedgerService.class);
-        EventController controller = new EventController(eventLedgerService, CLOCK);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        EventController controller = new EventController(eventLedgerService, CLOCK, meterRegistry);
         TransactionEventRequest request = request(EVENT_001);
         EventSubmissionResponse serviceResponse = submission(EVENT_001, ApplyStatus.APPLIED, false);
 
@@ -64,6 +66,7 @@ class EventControllerTest {
         assertThat(response.getBody().code()).isEqualTo("EVENT_CREATED");
         assertThat(response.getBody().description()).isEqualTo("Event was stored and applied to the account.");
         assertThat(response.getBody().data().eventId()).isEqualTo(UUID.fromString(EVENT_001));
+        assertThat(submissionMetricCount(meterRegistry, ApplyStatus.APPLIED, false)).isEqualTo(1.0);
     }
 
     /**
@@ -77,7 +80,8 @@ class EventControllerTest {
     @Test
     void submitEvent_whenServiceReportsExactDuplicate_returnsOkEnvelopeWithDuplicateCode() {
         EventLedgerService eventLedgerService = mock(EventLedgerService.class);
-        EventController controller = new EventController(eventLedgerService, CLOCK);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        EventController controller = new EventController(eventLedgerService, CLOCK, meterRegistry);
         TransactionEventRequest request = request(EVENT_DUPLICATE);
         EventSubmissionResponse serviceResponse = submission(EVENT_DUPLICATE, ApplyStatus.APPLIED, true);
 
@@ -88,6 +92,7 @@ class EventControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo("EVENT_DUPLICATE");
+        assertThat(submissionMetricCount(meterRegistry, ApplyStatus.APPLIED, true)).isEqualTo(1.0);
     }
 
     /**
@@ -102,7 +107,8 @@ class EventControllerTest {
     @Test
     void submitEvent_whenServiceReportsApplyFailed_returnsAcceptedEnvelopeWithApplyFailedCode() {
         EventLedgerService eventLedgerService = mock(EventLedgerService.class);
-        EventController controller = new EventController(eventLedgerService, CLOCK);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        EventController controller = new EventController(eventLedgerService, CLOCK, meterRegistry);
         TransactionEventRequest request = request(EVENT_OUTAGE);
         EventSubmissionResponse serviceResponse = submission(EVENT_OUTAGE, ApplyStatus.APPLY_FAILED, false);
 
@@ -118,7 +124,8 @@ class EventControllerTest {
     @Test
     void submitEvent_whenServiceReportsApplyRejected_returnsAcceptedEnvelopeWithApplyRejectedCode() {
         EventLedgerService eventLedgerService = mock(EventLedgerService.class);
-        EventController controller = new EventController(eventLedgerService, CLOCK);
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        EventController controller = new EventController(eventLedgerService, CLOCK, meterRegistry);
         TransactionEventRequest request = request(EVENT_REJECTED);
         EventSubmissionResponse serviceResponse = submission(EVENT_REJECTED, ApplyStatus.APPLY_REJECTED, false);
 
@@ -129,6 +136,20 @@ class EventControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo("EVENT_ACCEPTED_ACCOUNT_APPLY_REJECTED");
+    }
+
+    private double submissionMetricCount(
+            SimpleMeterRegistry meterRegistry,
+            ApplyStatus status,
+            boolean duplicate
+    ) {
+        return meterRegistry.counter(
+                "event_gateway.events.submitted",
+                "status",
+                status.name(),
+                "duplicate",
+                Boolean.toString(duplicate)
+        ).count();
     }
 
     /**

@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.cs.eventgateway.client.AccountApplyResult;
 import com.cs.eventgateway.client.AccountServiceClient;
+import com.cs.eventgateway.dto.event.AccountTransactionRequest;
 import com.cs.eventgateway.dto.event.EventResponse;
 import com.cs.eventgateway.dto.event.EventSubmissionResponse;
 import com.cs.eventgateway.dto.event.EventType;
@@ -25,6 +26,7 @@ import com.cs.eventgateway.exception.DuplicateEventConflictException;
 import com.cs.eventgateway.repository.EventRecordRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -66,6 +68,7 @@ class EventLedgerServiceTest {
     private static final String EVENT_REJECTED = "4cc7552b-46e3-48af-9686-0ac4cfa43c3c";
     private static final String EVENT_RETRY = "75304861-a3b2-47ff-877a-c47c890a536d";
     private static final String EVENT_CONCURRENT = "6693f1c0-7c29-433b-8425-0c96d1efe4f3";
+    private static final String EVENT_DEBIT = "d4e36ed2-5c1c-451d-a2fa-440c6c01210f";
 
     @Autowired
     private EventRecordRepository eventRecordRepository;
@@ -110,6 +113,27 @@ class EventLedgerServiceTest {
         assertThat(response.duplicate()).isFalse();
         assertThat(response.message()).isEqualTo("EVENT_ACCEPTED_AND_APPLIED");
         verify(accountServiceClient).applyTransaction(eq("acct-123"), any());
+    }
+
+    @Test
+    void submit_whenDebitEventIsReceived_persistsAndForwardsDebitToAccountService() {
+        TransactionEventRequest request = event(
+                EVENT_DEBIT,
+                "acct-123",
+                EventType.DEBIT,
+                new BigDecimal("40.25"),
+                "2026-05-15T14:02:11Z"
+        );
+
+        EventSubmissionResponse response = eventLedgerService.submit(request);
+
+        ArgumentCaptor<AccountTransactionRequest> transactionCaptor =
+                ArgumentCaptor.forClass(AccountTransactionRequest.class);
+        assertThat(response.type()).isEqualTo(EventType.DEBIT);
+        assertThat(response.amount()).isEqualByComparingTo("40.25");
+        verify(accountServiceClient).applyTransaction(eq("acct-123"), transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().type()).isEqualTo(EventType.DEBIT);
+        assertThat(transactionCaptor.getValue().amount()).isEqualByComparingTo("40.25");
     }
 
     /**
@@ -312,11 +336,21 @@ class EventLedgerServiceTest {
      * @return valid transaction event request
      */
     private TransactionEventRequest event(String eventId, String accountId, String timestamp) {
+        return event(eventId, accountId, EventType.CREDIT, new BigDecimal("150.00"), timestamp);
+    }
+
+    private TransactionEventRequest event(
+            String eventId,
+            String accountId,
+            EventType type,
+            BigDecimal amount,
+            String timestamp
+    ) {
         return new TransactionEventRequest(
                 UUID.fromString(eventId),
                 accountId,
-                EventType.CREDIT,
-                new BigDecimal("150.00"),
+                type,
+                amount,
                 "USD",
                 Instant.parse(timestamp),
                 Map.of("source", "mainframe-batch", "batchId", "B-9042")

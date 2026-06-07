@@ -13,6 +13,7 @@ import com.cs.eventgateway.dto.event.EventSubmissionResponse;
 import com.cs.eventgateway.dto.event.TransactionEventRequest;
 import com.cs.eventgateway.entity.ApplyStatus;
 import com.cs.eventgateway.service.EventLedgerService;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -47,6 +48,7 @@ public class EventController {
 
     private final EventLedgerService eventLedgerService;
     private final Clock clock;
+    private final MeterRegistry meterRegistry;
 
     /**
      * Submits a transaction event into the ledger.
@@ -124,6 +126,7 @@ public class EventController {
         log.info("Received event submission eventId={} accountId={} type={}",
                 request.eventId(), request.accountId(), request.type());
         EventSubmissionResponse response = eventLedgerService.submit(request);
+        recordSubmission(response);
         log.info("Processed event {} with status {} duplicate={}",
                 response.eventId(), response.status(), response.duplicate());
 
@@ -273,5 +276,15 @@ public class EventController {
                 description,
                 data
         );
+    }
+
+    private void recordSubmission(EventSubmissionResponse response) {
+        meterRegistry.counter(
+                "event_gateway.events.submitted",
+                "status",
+                response.status().name(),
+                "duplicate",
+                Boolean.toString(response.duplicate())
+        ).increment();
     }
 }

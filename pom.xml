@@ -25,6 +25,8 @@
         <springdoc-openapi.version>3.0.3</springdoc-openapi.version>
         <spring-cloud.version>2025.1.1</spring-cloud.version>
         <cucumber.version>7.20.1</cucumber.version>
+        <pact.version>4.6.20</pact.version>
+        <pacticipant.version>${project.version}</pacticipant.version>
     </properties>
 
     <dependencyManagement>
@@ -149,6 +151,13 @@
             <artifactId>junit-platform-suite</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>au.com.dius.pact.consumer</groupId>
+            <artifactId>junit5</artifactId>
+            <version>${pact.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -178,6 +187,19 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>au.com.dius.pact.provider</groupId>
+                <artifactId>maven</artifactId>
+                <version>${pact.version}</version>
+                <configuration>
+                    <pactDirectory>${project.build.directory}/pacts</pactDirectory>
+                    <pactBrokerUrl>${env.PACT_BROKER_BASE_URL}</pactBrokerUrl>
+                    <pactBrokerToken>${env.PACT_BROKER_TOKEN}</pactBrokerToken>
+                    <pactBrokerAuthenticationScheme>Bearer</pactBrokerAuthenticationScheme>
+                    <projectVersion>${pacticipant.version}</projectVersion>
+                    <consumerBranch>${env.PACT_CONSUMER_BRANCH}</consumerBranch>
                 </configuration>
             </plugin>
         </plugins>

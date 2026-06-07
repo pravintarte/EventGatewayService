@@ -3,6 +3,8 @@ package com.cs.eventgateway.client;
 import java.net.URI;
 
 import com.cs.eventgateway.config.AccountServiceProperties;
+import com.cs.eventgateway.config.tracing.TraceContext;
+import com.cs.eventgateway.contract.AccountServiceHttpContract;
 import com.cs.eventgateway.dto.ApiCodes;
 import com.cs.eventgateway.dto.event.AccountTransactionRequest;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
@@ -27,7 +29,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class AccountServiceClient {
 
     private static final String RESILIENCE_INSTANCE = "accountService";
-    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final RestClient accountServiceRestClient;
     private final AccountServiceInstanceResolver accountServiceInstanceResolver;
@@ -47,7 +48,9 @@ public class AccountServiceClient {
         try {
             accountServiceRestClient.post()
                     .uri(transactionUri(accountId))
-                    .header(IDEMPOTENCY_KEY_HEADER, request.eventId().toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(AccountServiceHttpContract.IDEMPOTENCY_KEY_HEADER, request.eventId().toString())
+                    .header(AccountServiceHttpContract.TRACE_ID_HEADER, TraceContext.currentOrNewTraceId())
                     .header(accountServiceProperties.internalCallerHeader(), accountServiceProperties.internalCaller())
                     .header(accountServiceProperties.internalTokenHeader(), accountServiceProperties.internalToken())
                     .body(request)
@@ -91,21 +94,29 @@ public class AccountServiceClient {
 
     URI transactionUri(String accountId) {
         return accountUriBuilder()
-                .pathSegment("accounts", accountId, "transactions")
+                .pathSegment(
+                        AccountServiceHttpContract.ACCOUNTS_PATH_SEGMENT,
+                        accountId,
+                        AccountServiceHttpContract.TRANSACTIONS_PATH_SEGMENT
+                )
                 .build()
                 .toUri();
     }
 
     URI balanceUri(String accountId) {
         return accountUriBuilder()
-                .pathSegment("accounts", accountId, "balance")
+                .pathSegment(
+                        AccountServiceHttpContract.ACCOUNTS_PATH_SEGMENT,
+                        accountId,
+                        AccountServiceHttpContract.BALANCE_PATH_SEGMENT
+                )
                 .build()
                 .toUri();
     }
 
     URI accountUri(String accountId) {
         return accountUriBuilder()
-                .pathSegment("accounts", accountId)
+                .pathSegment(AccountServiceHttpContract.ACCOUNTS_PATH_SEGMENT, accountId)
                 .build()
                 .toUri();
     }
@@ -119,6 +130,7 @@ public class AccountServiceClient {
         ResponseEntity<String> response = accountServiceRestClient.get()
                 .uri(uri)
                 .accept(MediaType.APPLICATION_JSON)
+                .header(AccountServiceHttpContract.TRACE_ID_HEADER, TraceContext.currentOrNewTraceId())
                 .header(accountServiceProperties.internalCallerHeader(), accountServiceProperties.internalCaller())
                 .header(accountServiceProperties.internalTokenHeader(), accountServiceProperties.internalToken())
                 .retrieve()
