@@ -13,3 +13,7 @@
 /misc.xml
 /vcs.xml
 /compiler.xml
+/dataSources.xml
+/modules.xml
+/inspectionProfiles/Project_Default.xml
+/sqldialects.xml
