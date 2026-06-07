@@ -1,19 +1,14 @@
 package com.cs.eventgateway.service;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 import com.cs.eventgateway.client.AccountApplyResult;
 import com.cs.eventgateway.client.AccountServiceClient;
 import com.cs.eventgateway.dto.ApiCodes;
-import com.cs.eventgateway.dto.event.AccountTransactionRequest;
 import com.cs.eventgateway.dto.event.EventResponse;
 import com.cs.eventgateway.dto.event.EventSubmissionResponse;
 import com.cs.eventgateway.dto.event.TransactionEventRequest;
@@ -22,14 +17,13 @@ import com.cs.eventgateway.entity.EventRecord;
 import com.cs.eventgateway.exception.DuplicateEventConflictException;
 import com.cs.eventgateway.exception.EventNotFoundException;
 import com.cs.eventgateway.repository.EventRecordRepository;
+import com.cs.eventgateway.service.ledger.EventIdempotencyMatcher;
+import com.cs.eventgateway.service.ledger.EventRecordMapper;
+import com.cs.eventgateway.service.ledger.RetryBackoffPolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * Coordinates the core Event Ledger workflow for the gateway.
@@ -53,15 +47,14 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 public class EventLedgerService {
 
-    private static final TypeReference<Map<String, Object>> METADATA_TYPE = new TypeReference<>() {
-    };
-    private static final int MAX_RETRY_BACKOFF_MINUTES = 30;
     private static final EnumSet<ApplyStatus> RETRYABLE_APPLY_STATUSES =
             EnumSet.of(ApplyStatus.PENDING, ApplyStatus.APPLY_FAILED);
 
     private final EventRecordRepository eventRecordRepository;
     private final AccountServiceClient accountServiceClient;
-    private final ObjectMapper objectMapper;
+    private final EventRecordMapper eventRecordMapper;
+    private final EventIdempotencyMatcher eventIdempotencyMatcher;
+    private final RetryBackoffPolicy retryBackoffPolicy;
     private final Clock clock;
 
     /**
@@ -115,7 +108,7 @@ public class EventLedgerService {
                             eventRecord.getEventId(),
                             eventRecord.getAccountId(),
                             eventRecord.getApplyStatus());
-                    return toEventResponse(eventRecord);
+                    return eventRecordMapper.toEventResponse(eventRecord);
                 })
                 .orElseThrow(() -> {
                     log.warn("Ledger event not found eventId={}", eventId);
@@ -138,7 +131,7 @@ public class EventLedgerService {
         log.info("Listing ledger events accountId={}", accountId);
         List<EventResponse> events = eventRecordRepository.findByAccountIdOrderByEventTimestampAscCreatedAtAscEventIdAsc(accountId)
                 .stream()
-                .map(this::toEventResponse)
+                .map(eventRecordMapper::toEventResponse)
                 .toList();
         log.info("Listed ledger events accountId={} count={}", accountId, events.size());
         return events;
@@ -202,7 +195,7 @@ public class EventLedgerService {
     private EventSubmissionResponse createAndApply(TransactionEventRequest request) {
         log.info("Creating new ledger event eventId={} accountId={} type={} amount={} currency={}",
                 request.eventId(), request.accountId(), request.type(), request.amount(), request.currency());
-        EventRecord eventRecord = newRecord(request);
+        EventRecord eventRecord = eventRecordMapper.newPendingRecord(request);
         EventRecord saved;
 
         try {
@@ -223,7 +216,7 @@ public class EventLedgerService {
                 updated.getAccountId(),
                 updated.getApplyStatus(),
                 updated.getApplyAttemptCount());
-        return toSubmissionResponse(
+        return eventRecordMapper.toSubmissionResponse(
                 updated,
                 false,
                 updated.getApplyStatus() == ApplyStatus.APPLIED
@@ -242,7 +235,7 @@ public class EventLedgerService {
                 eventRecord.getNextApplyAttemptAt());
         AccountApplyResult applyResult = accountServiceClient.applyTransaction(
                 eventRecord.getAccountId(),
-                toAccountTransactionRequest(eventRecord)
+                eventRecordMapper.toAccountTransactionRequest(eventRecord)
         );
 
         Instant now = Instant.now(clock);
@@ -259,7 +252,7 @@ public class EventLedgerService {
         } else if (applyResult.retryable()) {
             eventRecord.setApplyStatus(ApplyStatus.APPLY_FAILED);
             eventRecord.setAccountServiceError(trimError(applyResult.errorMessage()));
-            eventRecord.setNextApplyAttemptAt(now.plus(retryBackoff(eventRecord.getApplyAttemptCount())));
+            eventRecord.setNextApplyAttemptAt(now.plus(retryBackoffPolicy.nextBackoff(eventRecord.getApplyAttemptCount())));
             log.warn("Account Service apply failed with retryable error eventId={} accountId={} attempt={} nextAttemptAt={} error={}",
                     eventRecord.getEventId(),
                     eventRecord.getAccountId(),
@@ -283,17 +276,6 @@ public class EventLedgerService {
         return saved;
     }
 
-    private AccountTransactionRequest toAccountTransactionRequest(EventRecord eventRecord) {
-        return new AccountTransactionRequest(
-                eventRecord.getEventId(),
-                eventRecord.getType(),
-                eventRecord.getAmount(),
-                eventRecord.getCurrency(),
-                eventRecord.getEventTimestamp(),
-                readMetadata(eventRecord.getMetadataJson())
-        );
-    }
-
     /**
      * Builds the response for a request whose {@code eventId} already exists.
      *
@@ -314,7 +296,7 @@ public class EventLedgerService {
             EventRecord existing,
             TransactionEventRequest request
     ) {
-        if (!samePayload(existing, request)) {
+        if (!eventIdempotencyMatcher.isExactDuplicate(existing, request)) {
             log.warn("Duplicate event id conflict eventId={} existingAccountId={} requestAccountId={}",
                     request.eventId(), existing.getAccountId(), request.accountId());
             throw new DuplicateEventConflictException(request.eventId());
@@ -322,205 +304,7 @@ public class EventLedgerService {
 
         log.info("Exact duplicate event ignored eventId={} accountId={} status={}",
                 existing.getEventId(), existing.getAccountId(), existing.getApplyStatus());
-        return toSubmissionResponse(existing, true, ApiCodes.DUPLICATE_EVENT_IGNORED);
-    }
-
-    /**
-     * Converts a validated inbound request into a new pending JPA entity.
-     *
-     * <p>The new record starts in {@link ApplyStatus#PENDING} because it has
-     * been accepted by the gateway but has not yet received an Account Service
-     * result. The metadata map is serialized into JSON for storage while still
-     * being exposed as a map in public DTOs.</p>
-     *
-     * @param request validated event submission request
-     * @return unsaved event record ready for persistence
-     */
-    private EventRecord newRecord(TransactionEventRequest request) {
-        Instant now = Instant.now(clock);
-        EventRecord eventRecord = new EventRecord();
-        eventRecord.setEventId(request.eventId());
-        eventRecord.setAccountId(request.accountId());
-        eventRecord.setType(request.type());
-        eventRecord.setAmount(request.amount());
-        eventRecord.setCurrency(request.currency());
-        eventRecord.setEventTimestamp(request.eventTimestamp());
-        eventRecord.setMetadataJson(writeMetadata(safeMetadata(request.metadata())));
-        eventRecord.setApplyStatus(ApplyStatus.PENDING);
-        eventRecord.setApplyAttemptCount(0);
-        eventRecord.setNextApplyAttemptAt(now);
-        eventRecord.setCreatedAt(now);
-        eventRecord.setUpdatedAt(now);
-        return eventRecord;
-    }
-
-    /**
-     * Compares the business payload of an existing ledger record with a retry.
-     *
-     * <p>The {@code eventId} is deliberately not compared here because this
-     * method is only invoked after the repository has loaded {@code existing}
-     * using {@code request.eventId()}. Comparing it again would be redundant.
-     * The method focuses on fields that determine whether the duplicate delivery
-     * is semantically identical: account, transaction type, amount, currency,
-     * event timestamp, and metadata.</p>
-     *
-     * @param existing ledger row already matched by event id
-     * @param request inbound request carrying the same event id
-     * @return true when the non-id payload is equivalent and safe to treat as a duplicate
-     */
-    private boolean samePayload(EventRecord existing, TransactionEventRequest request) {
-        return Objects.equals(existing.getAccountId(), request.accountId())
-                && Objects.equals(existing.getType(), request.type())
-                && existing.getAmount().compareTo(request.amount()) == 0
-                && Objects.equals(existing.getCurrency(), request.currency())
-                && Objects.equals(existing.getEventTimestamp(), request.eventTimestamp())
-                && sameMetadata(existing.getMetadataJson(), safeMetadata(request.metadata()));
-    }
-
-    /**
-     * Compares stored metadata JSON with request metadata using JSON structure.
-     *
-     * <p>Metadata maps can be serialized with different key ordering, so this
-     * method parses both sides into Jackson tree nodes before comparing them.
-     * That prevents a retry from being incorrectly rejected just because JSON
-     * object fields were written in a different order.</p>
-     *
-     * @param existingMetadataJson metadata JSON stored in the ledger row
-     * @param requestMetadata metadata map from the inbound request
-     * @return true when both metadata values represent the same JSON object
-     */
-    private boolean sameMetadata(String existingMetadataJson, Map<String, Object> requestMetadata) {
-        try {
-            JsonNode existing = objectMapper.readTree(
-                    existingMetadataJson == null || existingMetadataJson.isBlank() ? "{}" : existingMetadataJson
-            );
-            JsonNode requested = objectMapper.valueToTree(requestMetadata);
-            return Objects.equals(existing, requested);
-        } catch (JacksonException ex) {
-            log.warn("Unable to compare metadata JSON for idempotency", ex);
-            return false;
-        }
-    }
-
-    /**
-     * Converts a persisted ledger entity into the public read response DTO.
-     *
-     * <p>The gateway stores metadata as JSON but returns it as a map so clients
-     * receive the same logical structure they submitted. The apply status and
-     * Account Service error fields expose whether the downstream account update
-     * succeeded or needs operational attention.</p>
-     *
-     * @param eventRecord persisted ledger entity
-     * @return public event response
-     */
-    private EventResponse toEventResponse(EventRecord eventRecord) {
-        return new EventResponse(
-                eventRecord.getEventId(),
-                eventRecord.getAccountId(),
-                eventRecord.getType(),
-                eventRecord.getAmount(),
-                eventRecord.getCurrency(),
-                eventRecord.getEventTimestamp(),
-                readMetadata(eventRecord.getMetadataJson()),
-                eventRecord.getApplyStatus(),
-                eventRecord.getCreatedAt(),
-                eventRecord.getUpdatedAt(),
-                eventRecord.getAccountServiceError()
-        );
-    }
-
-    /**
-     * Converts a persisted ledger entity into the public submission response.
-     *
-     * <p>This response adds submission-specific context on top of the event
-     * fields: whether the request was a duplicate and a short message describing
-     * the processing outcome. Controllers wrap this DTO in the standard API
-     * response envelope with a stable response code.</p>
-     *
-     * @param eventRecord persisted ledger entity
-     * @param duplicate true when the caller submitted an exact duplicate event
-     * @param message concise processing outcome used by API clients and tests
-     * @return public event submission response
-     */
-    private EventSubmissionResponse toSubmissionResponse(
-            EventRecord eventRecord,
-            boolean duplicate,
-            String message
-    ) {
-        return new EventSubmissionResponse(
-                eventRecord.getEventId(),
-                eventRecord.getAccountId(),
-                eventRecord.getType(),
-                eventRecord.getAmount(),
-                eventRecord.getCurrency(),
-                eventRecord.getEventTimestamp(),
-                readMetadata(eventRecord.getMetadataJson()),
-                eventRecord.getApplyStatus(),
-                duplicate,
-                eventRecord.getCreatedAt(),
-                eventRecord.getUpdatedAt(),
-                message,
-                eventRecord.getAccountServiceError()
-        );
-    }
-
-    /**
-     * Serializes metadata into JSON for database storage.
-     *
-     * <p>Request validation ensures metadata is a JSON object at the API
-     * boundary, but serialization can still fail if an unsupported object type
-     * reaches this service. In that case the method raises an
-     * {@link IllegalArgumentException}, which is treated as an application error
-     * instead of silently storing a corrupted metadata value.</p>
-     *
-     * @param metadata metadata map to serialize
-     * @return JSON string stored in the ledger table
-     */
-    private String writeMetadata(Map<String, Object> metadata) {
-        try {
-            return objectMapper.writeValueAsString(metadata);
-        } catch (JacksonException ex) {
-            log.warn("Unable to serialize event metadata for ledger storage", ex);
-            throw new IllegalArgumentException("metadata must be JSON serializable", ex);
-        }
-    }
-
-    /**
-     * Deserializes stored metadata JSON for API responses and comparisons.
-     *
-     * <p>A missing or blank metadata value is treated as an empty map because
-     * metadata is optional in the public API. If stored JSON cannot be parsed,
-     * the service logs the issue and returns an empty map to avoid breaking
-     * unrelated event reads.</p>
-     *
-     * @param metadataJson JSON stored in the ledger table
-     * @return metadata map suitable for response DTOs
-     */
-    private Map<String, Object> readMetadata(String metadataJson) {
-        if (metadataJson == null || metadataJson.isBlank()) {
-            return Collections.emptyMap();
-        }
-
-        try {
-            return objectMapper.readValue(metadataJson, METADATA_TYPE);
-        } catch (JacksonException ex) {
-            log.warn("Unable to read stored metadata JSON", ex);
-            return Collections.emptyMap();
-        }
-    }
-
-    /**
-     * Normalizes nullable request metadata to an immutable empty map.
-     *
-     * <p>Using a single empty-map representation simplifies JSON comparison and
-     * response serialization. It also makes requests that omit metadata compare
-     * equal to requests that send an empty metadata object.</p>
-     *
-     * @param metadata nullable metadata map from the request
-     * @return original metadata when present, otherwise an empty map
-     */
-    private Map<String, Object> safeMetadata(Map<String, Object> metadata) {
-        return metadata == null ? Collections.emptyMap() : metadata;
+        return eventRecordMapper.toSubmissionResponse(existing, true, ApiCodes.DUPLICATE_EVENT_IGNORED);
     }
 
     /**
@@ -543,11 +327,4 @@ public class EventLedgerService {
         return errorMessage.length() > 1024 ? errorMessage.substring(0, 1024) : errorMessage;
     }
 
-    private Duration retryBackoff(int attemptCount) {
-        int exponent = Math.min(Math.max(attemptCount - 1, 0), 5);
-        long minutes = Math.min(MAX_RETRY_BACKOFF_MINUTES, 1L << exponent);
-        Duration backoff = Duration.ofMinutes(minutes);
-        log.debug("Calculated retry backoff attempt={} backoff={}", attemptCount, backoff);
-        return backoff;
-    }
 }

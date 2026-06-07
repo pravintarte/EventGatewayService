@@ -40,7 +40,7 @@ public class AccountServiceClient {
      * @return application result
      */
     @CircuitBreaker(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackApplyTransaction")
-    @Bulkhead(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackApplyTransaction")
+    @Bulkhead(name = RESILIENCE_INSTANCE)
     public AccountApplyResult applyTransaction(String accountId, AccountTransactionRequest request) {
         try {
             accountServiceRestClient.post()
@@ -68,7 +68,7 @@ public class AccountServiceClient {
      * @return Account Service response body and status
      */
     @CircuitBreaker(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackReadAccount")
-    @Bulkhead(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackReadAccount")
+    @Bulkhead(name = RESILIENCE_INSTANCE)
     public ResponseEntity<String> getBalance(String accountId) {
         return proxyGet("balance", accountId, balanceUri(accountId));
     }
@@ -80,7 +80,7 @@ public class AccountServiceClient {
      * @return Account Service response body and status
      */
     @CircuitBreaker(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackReadAccount")
-    @Bulkhead(name = RESILIENCE_INSTANCE, fallbackMethod = "fallbackReadAccount")
+    @Bulkhead(name = RESILIENCE_INSTANCE)
     public ResponseEntity<String> getAccount(String accountId) {
         return proxyGet("account", accountId, accountUri(accountId));
     }

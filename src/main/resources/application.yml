@@ -76,27 +76,16 @@ info:
 resilience4j:
   circuitbreaker:
     instances:
-      helloWorld:
-        register-health-indicator: true
-        sliding-window-type: count_based
-        sliding-window-size: 10
-        minimum-number-of-calls: 5
-        failure-rate-threshold: 50
-        wait-duration-in-open-state: 10s
-        permitted-number-of-calls-in-half-open-state: 3
       accountService:
         register-health-indicator: true
         sliding-window-type: count_based
-        sliding-window-size: 20
+        sliding-window-size: 10
         minimum-number-of-calls: 5
         failure-rate-threshold: 50
         wait-duration-in-open-state: 15s
         permitted-number-of-calls-in-half-open-state: 3
   bulkhead:
     instances:
-      helloWorld:
-        max-concurrent-calls: 25
-        max-wait-duration: 0
       accountService:
         max-concurrent-calls: 50
         max-wait-duration: 0

@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * Public request body for submitting a transaction event.
@@ -46,8 +47,9 @@ public record TransactionEventRequest(
         @Pattern(regexp = "^[A-Z]{3}$")
         String currency,
 
-        @Schema(description = "Original event occurrence timestamp.", example = "2026-05-15T14:02:11Z")
+        @Schema(description = "Original event occurrence timestamp in UTC.", example = "2026-05-15T14:02:11Z")
         @NotNull
+        @JsonDeserialize(using = UtcInstantDeserializer.class)
         Instant eventTimestamp,
 
         @Schema(description = "Optional upstream metadata represented as a JSON object.")

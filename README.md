@@ -26,7 +26,6 @@ transaction. Events remain queryable even when Account Service is unavailable.
 - `GET /accounts/{accountId}/balance` proxies an Account Service balance lookup.
 - `GET /accounts/{accountId}` proxies Account Service account details and recent transactions.
 - `GET /health` returns the public gateway health response.
-- `GET /api/v1/hello` returns legacy service metadata and confirms that the service is running.
 - `GET /actuator/health` returns runtime health details.
 - `GET /h2-console` opens the development H2 console.
 

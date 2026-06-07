@@ -14,5 +14,10 @@ services:
     environment:
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_PROFILES_ACTIVE: docker
+      EUREKA_DEFAULT_ZONE: http://host.docker.internal:8761/eureka/
+      ACCOUNT_SERVICE_DEFAULT_URL: http://host.docker.internal:8081
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
+

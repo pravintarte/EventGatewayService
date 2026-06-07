@@ -62,12 +62,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadable(HttpMessageNotReadableException ex) {
-        log.warn("Malformed request body: {}", ex.getMessage());
+        List<String> details = malformedRequestDetails(ex);
+        log.warn("Malformed request body: {}", details);
         return error(
                 HttpStatus.BAD_REQUEST,
                 ApiCodes.MALFORMED_REQUEST,
                 "Request body is malformed or contains invalid field values.",
-                List.of()
+                details
         );
     }
 
@@ -142,5 +143,24 @@ public class GlobalExceptionHandler {
                         description,
                         details
                 ));
+    }
+
+    private List<String> malformedRequestDetails(HttpMessageNotReadableException ex) {
+        Throwable cause = ex.getMostSpecificCause();
+        String message = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()
+                ? ex.getMessage()
+                : cause.getMessage();
+        if (message == null || message.isBlank()) {
+            return List.of("Request body is malformed or contains invalid field values.");
+        }
+
+        String firstLine = message.lines()
+                .findFirst()
+                .orElse("Request body is malformed or contains invalid field values.")
+                .strip();
+        if (firstLine.startsWith("JSON parse error: ")) {
+            firstLine = firstLine.substring("JSON parse error: ".length()).strip();
+        }
+        return List.of(firstLine);
     }
 }
