@@ -1,0 +1,90 @@
+### Event Gateway API - Negative Scenario Requests
+### Run with the IntelliJ HTTP Client or VS Code REST Client.
+
+@host = http://localhost:8080
+@existingEventId = 9b63f0d4-0f49-4f85-9447-fd45a0c5b3c2
+@accountId = acct-http-123
+
+### Validation error - missing required fields and non-positive amount
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": null,
+  "accountId": "",
+  "type": "CREDIT",
+  "amount": 0,
+  "currency": "usd",
+  "metadata": {
+    "source": "http-client"
+  }
+}
+
+### Malformed request - invalid enum value
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "89d53646-0ebd-48d4-a337-96fa610d8e93",
+  "accountId": "{{accountId}}",
+  "type": "TRANSFER",
+  "amount": 100.00,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:02:11Z",
+  "metadata": {}
+}
+
+### Malformed request - eventTimestamp must use UTC timezone
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "7fe118d2-1958-4238-8647-a52c55b946c8",
+  "accountId": "{{accountId}}",
+  "type": "CREDIT",
+  "amount": 100.00,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T09:02:11-05:00",
+  "metadata": {}
+}
+
+### Malformed request - invalid JSON body
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "22480c4f-8a7c-4b82-b1d4-a2ef55bcb2e2",
+  "accountId": "{{accountId}}",
+  "type": "CREDIT",
+  "amount": 100.00,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:02:11Z",
+  "metadata": {
+}
+
+### Conflict - reuse an existing event id with a different amount
+### Run the happy-path submit request for the existing event id before this request.
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "{{existingEventId}}",
+  "accountId": "{{accountId}}",
+  "type": "CREDIT",
+  "amount": 999.99,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:02:11Z",
+  "metadata": {
+    "source": "http-client",
+    "batchId": "B-9042"
+  }
+}
+
+### Not found - unknown event id
+GET {{host}}/events/5ab0b00c-826f-42c5-bd9f-bb7ee8a690ac
+
+### Validation error - missing account query parameter
+GET {{host}}/events
+
+### Validation error - blank account query parameter
+GET {{host}}/events?account=

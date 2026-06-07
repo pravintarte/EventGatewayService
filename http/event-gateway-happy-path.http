@@ -1,0 +1,93 @@
+### Event Gateway API - Happy Path Requests
+### Run with the IntelliJ HTTP Client or VS Code REST Client.
+### If Account Service is unavailable, the first POST returns 202 instead of 201,
+### but the event is still stored and can be retrieved/listed.
+
+@host = http://localhost:8080
+@registry = http://localhost:8761
+@eventId = a80304ad-384a-4da4-aa3f-1c50fb2df311
+@debitEventId = bb9711b1-6aa1-4453-b850-ed9f356cb42b
+@accountId = acct-http-123
+
+### Gateway actuator health
+GET {{host}}/actuator/health
+
+### Eureka registry applications
+GET {{registry}}/eureka/apps
+Accept: application/json
+
+### Event Gateway registration in Eureka
+GET {{registry}}/eureka/apps/EVENT-GATEWAY-API
+Accept: application/json
+
+### Swagger UI
+GET {{host}}/swagger-ui.html
+
+### OpenAPI JSON
+GET {{host}}/v3/api-docs
+
+### OpenAPI YAML
+GET {{host}}/v3/api-docs.yaml
+
+### Submit a random CREDIT event
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "{{$uuid}}",
+  "accountId": "{{accountId}}",
+  "type": "CREDIT",
+  "amount": 150.00,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:02:11Z",
+  "metadata": {
+    "source": "http-client",
+    "batchId": "B-9042"
+  }
+}
+
+### Submit the same event again - exact duplicate should return 200 EVENT_DUPLICATE
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "{{eventId}}",
+  "accountId": "{{accountId}}",
+  "type": "CREDIT",
+  "amount": 150.00,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:02:11Z",
+  "metadata": {
+    "source": "http-client",
+    "batchId": "B-9042"
+  }
+}
+
+### Submit a DEBIT event
+POST {{host}}/events
+Content-Type: application/json
+
+{
+  "eventId": "{{debitEventId}}",
+  "accountId": "{{accountId}}",
+  "type": "DEBIT",
+  "amount": 25.50,
+  "currency": "USD",
+  "eventTimestamp": "2026-05-15T14:05:00Z",
+  "metadata": {
+    "source": "http-client",
+    "reason": "fee"
+  }
+}
+
+### Retrieve one event by id
+GET {{host}}/events/{{eventId}}
+
+### List events for account
+GET {{host}}/events?account={{accountId}}
+
+### Get account balance through Event Gateway
+GET {{host}}/accounts/{{accountId}}/balance
+
+### Get account details through Event Gateway
+GET {{host}}/accounts/{{accountId}}
