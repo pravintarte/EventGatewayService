@@ -27,6 +27,10 @@ account-service:
   default-url: ${ACCOUNT_SERVICE_DEFAULT_URL:http://localhost:8081}
   connect-timeout: ${ACCOUNT_SERVICE_CONNECT_TIMEOUT:2s}
   read-timeout: ${ACCOUNT_SERVICE_READ_TIMEOUT:5s}
+  internal-caller-header: ${ACCOUNT_SERVICE_INTERNAL_CALLER_HEADER:X-Internal-Caller}
+  internal-token-header: ${ACCOUNT_SERVICE_INTERNAL_TOKEN_HEADER:X-Internal-Token}
+  internal-caller: ${ACCOUNT_SERVICE_INTERNAL_CALLER:event-gateway-api}
+  internal-token: ${ACCOUNT_SERVICE_INTERNAL_TOKEN:local-dev-token}
 
 event-gateway:
   retry:
@@ -106,3 +110,4 @@ logging:
   level:
     root: INFO
     com.cs.eventgateway: DEBUG
+

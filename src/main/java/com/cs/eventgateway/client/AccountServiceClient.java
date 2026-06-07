@@ -2,6 +2,7 @@ package com.cs.eventgateway.client;
 
 import java.net.URI;
 
+import com.cs.eventgateway.config.AccountServiceProperties;
 import com.cs.eventgateway.dto.ApiCodes;
 import com.cs.eventgateway.dto.event.AccountTransactionRequest;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
@@ -30,6 +31,7 @@ public class AccountServiceClient {
 
     private final RestClient accountServiceRestClient;
     private final AccountServiceInstanceResolver accountServiceInstanceResolver;
+    private final AccountServiceProperties accountServiceProperties;
 
     /**
      * Applies a transaction to the Account Service. Resilience4j returns a
@@ -46,6 +48,8 @@ public class AccountServiceClient {
             accountServiceRestClient.post()
                     .uri(transactionUri(accountId))
                     .header(IDEMPOTENCY_KEY_HEADER, request.eventId().toString())
+                    .header(accountServiceProperties.internalCallerHeader(), accountServiceProperties.internalCaller())
+                    .header(accountServiceProperties.internalTokenHeader(), accountServiceProperties.internalToken())
                     .body(request)
                     .retrieve()
                     .toBodilessEntity();
@@ -115,6 +119,8 @@ public class AccountServiceClient {
         ResponseEntity<String> response = accountServiceRestClient.get()
                 .uri(uri)
                 .accept(MediaType.APPLICATION_JSON)
+                .header(accountServiceProperties.internalCallerHeader(), accountServiceProperties.internalCaller())
+                .header(accountServiceProperties.internalTokenHeader(), accountServiceProperties.internalToken())
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (request, downstreamResponse) -> {
                     // Preserve Account Service error statuses/bodies for read-through endpoints.

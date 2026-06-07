@@ -12,19 +12,31 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param defaultUrl fallback Account Service base URL used when discovery fails
  * @param connectTimeout maximum time to establish Account Service connections
  * @param readTimeout maximum time to wait for Account Service responses
+ * @param internalCallerHeader header used to identify Event Gateway to Account Service
+ * @param internalTokenHeader header used to send the shared Account Service POC token
+ * @param internalCaller caller value Account Service expects from Event Gateway
+ * @param internalToken shared POC token Account Service validates before allowing account endpoints
  */
 @ConfigurationProperties(prefix = "account-service")
 public record AccountServiceProperties(
         String serviceId,
         URI defaultUrl,
         Duration connectTimeout,
-        Duration readTimeout
+        Duration readTimeout,
+        String internalCallerHeader,
+        String internalTokenHeader,
+        String internalCaller,
+        String internalToken
 ) {
 
     private static final String DEFAULT_SERVICE_ID = "account-service";
     private static final URI DEFAULT_URL = URI.create("http://localhost:8081");
     private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(5);
+    private static final String DEFAULT_INTERNAL_CALLER_HEADER = "X-Internal-Caller";
+    private static final String DEFAULT_INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+    private static final String DEFAULT_INTERNAL_CALLER = "event-gateway-api";
+    private static final String DEFAULT_INTERNAL_TOKEN = "local-dev-token";
 
     public AccountServiceProperties {
         if (serviceId == null || serviceId.isBlank()) {
@@ -38,6 +50,18 @@ public record AccountServiceProperties(
         }
         if (readTimeout == null) {
             readTimeout = DEFAULT_READ_TIMEOUT;
+        }
+        if (internalCallerHeader == null || internalCallerHeader.isBlank()) {
+            internalCallerHeader = DEFAULT_INTERNAL_CALLER_HEADER;
+        }
+        if (internalTokenHeader == null || internalTokenHeader.isBlank()) {
+            internalTokenHeader = DEFAULT_INTERNAL_TOKEN_HEADER;
+        }
+        if (internalCaller == null || internalCaller.isBlank()) {
+            internalCaller = DEFAULT_INTERNAL_CALLER;
+        }
+        if (internalToken == null || internalToken.isBlank()) {
+            internalToken = DEFAULT_INTERNAL_TOKEN;
         }
     }
 }

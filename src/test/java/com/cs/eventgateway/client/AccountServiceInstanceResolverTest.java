@@ -42,7 +42,7 @@ class AccountServiceInstanceResolverTest {
         when(serviceInstance.getUri()).thenReturn(URI.create("http://account-service-host:8081"));
 
         AccountServiceInstanceResolver resolver = new AccountServiceInstanceResolver(
-                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null),
+                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null, null, null, null, null),
                 provider
         );
 
@@ -66,7 +66,7 @@ class AccountServiceInstanceResolverTest {
         when(provider.getIfAvailable()).thenReturn(null);
 
         AccountServiceInstanceResolver resolver = new AccountServiceInstanceResolver(
-                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null),
+                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null, null, null, null, null),
                 provider
         );
 
@@ -88,7 +88,7 @@ class AccountServiceInstanceResolverTest {
         when(discoveryClient.getInstances("account-service")).thenReturn(List.of());
 
         AccountServiceInstanceResolver resolver = new AccountServiceInstanceResolver(
-                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null),
+                new AccountServiceProperties("account-service", URI.create("http://localhost:8081"), null, null, null, null, null, null),
                 provider
         );
 
@@ -97,3 +97,4 @@ class AccountServiceInstanceResolverTest {
         assertThat(uri).isEqualTo(URI.create("http://localhost:8081"));
     }
 }
+

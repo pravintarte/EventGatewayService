@@ -16,8 +16,11 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_DEFAULT_ZONE: http://host.docker.internal:8761/eureka/
       ACCOUNT_SERVICE_DEFAULT_URL: http://host.docker.internal:8081
+      ACCOUNT_SERVICE_INTERNAL_CALLER: event-gateway-api
+      ACCOUNT_SERVICE_INTERNAL_TOKEN: local-dev-token
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
+
 

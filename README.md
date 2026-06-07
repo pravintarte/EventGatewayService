@@ -163,6 +163,20 @@ $env:ACCOUNT_SERVICE_CONNECT_TIMEOUT = "2s"
 $env:ACCOUNT_SERVICE_READ_TIMEOUT = "5s"
 ```
 
+
+### Account Service POC Internal Access
+
+Event Gateway sends shared POC internal-access headers on every Account Service call so Account Service can reject direct calls that do not look like Event Gateway traffic.
+
+```powershell
+$env:ACCOUNT_SERVICE_INTERNAL_CALLER_HEADER = "X-Internal-Caller"
+$env:ACCOUNT_SERVICE_INTERNAL_TOKEN_HEADER = "X-Internal-Token"
+$env:ACCOUNT_SERVICE_INTERNAL_CALLER = "event-gateway-api"
+$env:ACCOUNT_SERVICE_INTERNAL_TOKEN = "local-dev-token"
+```
+
+These headers are a POC convenience only. Production should use network policy, mTLS, OAuth2 client credentials, or service mesh identity.
+
 Failed apply retry overrides:
 
 ```powershell
