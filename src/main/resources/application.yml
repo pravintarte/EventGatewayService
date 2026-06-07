@@ -24,6 +24,15 @@ spring:
 
 account-service:
   service-id: ${ACCOUNT_SERVICE_SERVICE_ID:account-service}
+  default-url: ${ACCOUNT_SERVICE_DEFAULT_URL:http://localhost:8081}
+  connect-timeout: ${ACCOUNT_SERVICE_CONNECT_TIMEOUT:2s}
+  read-timeout: ${ACCOUNT_SERVICE_READ_TIMEOUT:5s}
+
+event-gateway:
+  retry:
+    enabled: ${EVENT_GATEWAY_RETRY_ENABLED:true}
+    fixed-delay: ${EVENT_GATEWAY_RETRY_FIXED_DELAY:30s}
+    initial-delay: ${EVENT_GATEWAY_RETRY_INITIAL_DELAY:30s}
 
 eureka:
   client:
@@ -93,6 +102,18 @@ resilience4j:
         max-wait-duration: 0
 
 logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      rename:
+        "[@timestamp]": timestamp
+        logger_name: logger
+        thread_name: thread
+      customizer:
+        - com.cs.eventgateway.config.logging.EventGatewayStructuredLoggingJsonCustomizer
+      context:
+        include: false
   level:
     root: INFO
-    com.eventgateway.api: DEBUG
+    com.cs.eventgateway: DEBUG
