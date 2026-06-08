@@ -323,7 +323,7 @@ trace propagation headers such as `traceparent` or B3 headers, not a custom
 including database connectivity. Actuator metrics are exposed under
 `/actuator/metrics`; event submissions increment the custom
 `event_gateway.events.submitted` counter tagged by apply status and duplicate
-flag.
+flag. Prometheus scrape output is exposed at `/actuator/prometheus`.
 
 ## Automated Tests
 

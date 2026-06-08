@@ -18,6 +18,14 @@ public class EventApplyRetryScheduler {
 
     private final EventLedgerService eventLedgerService;
 
+    /**
+     * Executes one scheduled retry cycle for due ledger events.
+     *
+     * <p>The scheduler creates a fresh application trace scope because this
+     * background path has no inbound HTTP request. The ledger service owns the
+     * actual retry selection and apply behavior; this component only triggers
+     * that workflow at the configured cadence and logs non-empty cycles.</p>
+     */
     @Scheduled(
             fixedDelayString = "${event-gateway.retry.fixed-delay:30s}",
             initialDelayString = "${event-gateway.retry.initial-delay:30s}"

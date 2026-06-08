@@ -26,8 +26,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -263,6 +263,16 @@ public class EventController {
         ));
     }
 
+    /**
+     * Builds the standard successful API response envelope for controller methods.
+     *
+     * @param status HTTP status represented in the body
+     * @param code stable application response code
+     * @param description human-readable response description
+     * @param data response payload
+     * @param <T> response payload type
+     * @return populated API response envelope
+     */
     private <T> ApiResponse<T> apiResponse(
             HttpStatus status,
             String code,
@@ -278,6 +288,11 @@ public class EventController {
         );
     }
 
+    /**
+     * Records the custom event submission metric with low-cardinality outcome tags.
+     *
+     * @param response submission response containing status and duplicate outcome
+     */
     private void recordSubmission(EventSubmissionResponse response) {
         meterRegistry.counter(
                 "event_gateway.events.submitted",

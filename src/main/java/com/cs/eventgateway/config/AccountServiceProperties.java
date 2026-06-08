@@ -39,6 +39,15 @@ public record AccountServiceProperties(
     private static final String DEFAULT_INTERNAL_CALLER = AccountServiceHttpContract.DEFAULT_INTERNAL_CALLER;
     private static final String DEFAULT_INTERNAL_TOKEN = AccountServiceHttpContract.DEFAULT_INTERNAL_TOKEN;
 
+    /**
+     * Normalizes optional configuration values to safe local-development defaults.
+     *
+     * <p>The compact constructor runs after Spring binds externalized
+     * configuration. Blank service identifiers, header names, caller names, and
+     * tokens are replaced with stable contract defaults; missing timeouts and
+     * fallback URLs receive bounded values so the gateway can still start and
+     * fail gracefully when Account Service discovery is unavailable.</p>
+     */
     public AccountServiceProperties {
         if (serviceId == null || serviceId.isBlank()) {
             serviceId = DEFAULT_SERVICE_ID;

@@ -58,11 +58,24 @@ public class AccountServiceInstanceResolver {
         return instanceUri;
     }
 
+    /**
+     * Returns the configured fallback URL and logs the reason discovery was not used.
+     *
+     * @param reason human-readable discovery failure reason
+     * @return configured default Account Service base URI
+     */
     private URI fallbackBaseUri(String reason) {
         log.warn("{}; using default Account Service URL {}", reason, properties.defaultUrl());
         return properties.defaultUrl();
     }
 
+    /**
+     * Returns the configured fallback URL and logs the exception that interrupted discovery.
+     *
+     * @param reason human-readable discovery failure reason
+     * @param ex exception raised by the discovery client
+     * @return configured default Account Service base URI
+     */
     private URI fallbackBaseUri(String reason, RuntimeException ex) {
         log.warn("{}; using default Account Service URL {}", reason, properties.defaultUrl(), ex);
         return properties.defaultUrl();

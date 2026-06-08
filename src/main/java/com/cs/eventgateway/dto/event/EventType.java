@@ -7,6 +7,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "Supported transaction event types.")
 public enum EventType {
+
+    /**
+     * Adds funds to the target account balance.
+     */
     CREDIT,
+
+    /**
+     * Removes funds from the target account balance.
+     */
     DEBIT
 }

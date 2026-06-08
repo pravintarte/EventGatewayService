@@ -1,9 +1,9 @@
 package com.cs.eventgateway.controller;
 
-import java.time.Clock;
-import java.time.Instant;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
 
 import javax.sql.DataSource;
@@ -53,6 +53,16 @@ public class HealthController {
         ));
     }
 
+    /**
+     * Performs the database portion of the health check.
+     *
+     * <p>The check borrows a connection and asks the JDBC driver to validate it
+     * with a short timeout. Failures are translated to a simple {@code DOWN}
+     * status so the public health response remains stable and does not expose
+     * connection details.</p>
+     *
+     * @return {@code UP} when the database connection validates, otherwise {@code DOWN}
+     */
     private String databaseStatus() {
         try (Connection connection = dataSource.getConnection()) {
             return connection.isValid(1) ? "UP" : "DOWN";

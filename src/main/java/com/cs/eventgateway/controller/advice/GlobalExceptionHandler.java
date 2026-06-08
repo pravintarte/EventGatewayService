@@ -29,6 +29,12 @@ public class GlobalExceptionHandler {
 
     private final Clock clock;
 
+    /**
+     * Handles request-body Bean Validation failures raised by annotated DTO fields.
+     *
+     * @param ex validation exception produced while binding the request body
+     * @return stable {@code 400} error envelope with field-level validation details
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         List<String> details = ex.getBindingResult()
@@ -45,6 +51,16 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles validation failures raised outside request-body binding.
+     *
+     * <p>This covers constrained path variables, query parameters, and other
+     * method-level validation failures that Spring reports as constraint
+     * violations instead of field binding errors.</p>
+     *
+     * @param ex constraint violation exception produced by Jakarta Validation
+     * @return stable {@code 400} error envelope with property-level details
+     */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
         List<String> details = ex.getConstraintViolations()
@@ -60,6 +76,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles malformed JSON and invalid serialized field values.
+     *
+     * @param ex unreadable-message exception produced by the HTTP converter
+     * @return stable {@code 400} error envelope with a concise parse failure detail
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadable(HttpMessageNotReadableException ex) {
         List<String> details = malformedRequestDetails(ex);
@@ -72,6 +94,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles path-variable or query-parameter type conversion failures.
+     *
+     * @param ex Spring MVC type mismatch exception
+     * @return stable {@code 400} error envelope naming the invalid parameter
+     */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         log.warn("Request parameter type mismatch name={} value={} requiredType={}",
@@ -84,6 +112,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles required query parameters that are absent from the request.
+     *
+     * @param ex Spring MVC missing-parameter exception
+     * @return stable {@code 400} error envelope naming the missing parameter
+     */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(MissingServletRequestParameterException ex) {
         log.warn("Missing request parameter name={} expectedType={}",
@@ -96,6 +130,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles reads for event ids that are not present in the gateway ledger.
+     *
+     * @param ex domain exception containing the missing event id
+     * @return stable {@code 404} error envelope
+     */
     @ExceptionHandler(EventNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(EventNotFoundException ex) {
         log.warn("Event lookup failed: {}", ex.getMessage());
@@ -107,6 +147,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles unsafe idempotency conflicts where an event id is reused for different payloads.
+     *
+     * @param ex domain exception containing the conflicting event id
+     * @return stable {@code 409} error envelope
+     */
     @ExceptionHandler(DuplicateEventConflictException.class)
     public ResponseEntity<ApiErrorResponse> handleDuplicateConflict(DuplicateEventConflictException ex) {
         log.warn("Duplicate event conflict: {}", ex.getMessage());
@@ -118,6 +164,12 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles all unexpected exceptions that were not mapped by a more specific handler.
+     *
+     * @param ex unhandled exception from the request pipeline
+     * @return stable {@code 500} error envelope without leaking implementation details
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex) {
         log.error("Unhandled API error", ex);
@@ -129,6 +181,15 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Builds the common API error envelope used by every exception handler.
+     *
+     * @param status HTTP status to return
+     * @param code stable application error code
+     * @param description human-readable error description
+     * @param details optional validation or parsing details
+     * @return response entity containing the standardized error body
+     */
     private ResponseEntity<ApiErrorResponse> error(
             HttpStatus status,
             String code,
@@ -145,6 +206,17 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    /**
+     * Extracts a safe one-line detail from a malformed request-body exception.
+     *
+     * <p>Jackson and Spring exception messages can include deeply nested parser
+     * context. This helper keeps the client-facing detail concise by selecting
+     * the most specific cause, trimming it to the first line, and removing the
+     * generic Spring JSON parse prefix when present.</p>
+     *
+     * @param ex unreadable-message exception raised by request deserialization
+     * @return singleton detail list suitable for the public error envelope
+     */
     private List<String> malformedRequestDetails(HttpMessageNotReadableException ex) {
         Throwable cause = ex.getMostSpecificCause();
         String message = cause == null || cause.getMessage() == null || cause.getMessage().isBlank()

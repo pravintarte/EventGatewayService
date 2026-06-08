@@ -92,6 +92,12 @@ public class AccountServiceClient {
         return proxyGet("account", accountId, accountUri(accountId));
     }
 
+    /**
+     * Builds the Account Service transaction endpoint URI for one account.
+     *
+     * @param accountId account id path segment
+     * @return absolute URI for the Account Service transaction endpoint
+     */
     URI transactionUri(String accountId) {
         return accountUriBuilder()
                 .pathSegment(
@@ -103,6 +109,12 @@ public class AccountServiceClient {
                 .toUri();
     }
 
+    /**
+     * Builds the Account Service balance endpoint URI for one account.
+     *
+     * @param accountId account id path segment
+     * @return absolute URI for the Account Service balance endpoint
+     */
     URI balanceUri(String accountId) {
         return accountUriBuilder()
                 .pathSegment(
@@ -114,6 +126,12 @@ public class AccountServiceClient {
                 .toUri();
     }
 
+    /**
+     * Builds the Account Service account-detail endpoint URI for one account.
+     *
+     * @param accountId account id path segment
+     * @return absolute URI for the Account Service account endpoint
+     */
     URI accountUri(String accountId) {
         return accountUriBuilder()
                 .pathSegment(AccountServiceHttpContract.ACCOUNTS_PATH_SEGMENT, accountId)
@@ -121,10 +139,27 @@ public class AccountServiceClient {
                 .toUri();
     }
 
+    /**
+     * Creates a URI builder from the currently resolved Account Service base URI.
+     *
+     * @return URI builder rooted at the discovered or fallback Account Service URL
+     */
     private UriComponentsBuilder accountUriBuilder() {
         return UriComponentsBuilder.fromUri(accountServiceInstanceResolver.baseUri());
     }
 
+    /**
+     * Performs a read-through Account Service GET call and preserves the downstream response.
+     *
+     * <p>Error statuses are intentionally not converted into exceptions so the
+     * gateway can pass Account Service read failures, such as {@code 404}, back
+     * to the caller with the original status and body.</p>
+     *
+     * @param operation short operation name used in logs
+     * @param accountId account being read
+     * @param uri absolute Account Service URI to call
+     * @return Account Service response body and status
+     */
     private ResponseEntity<String> proxyGet(String operation, String accountId, URI uri) {
         log.debug("Calling Account Service operation={} accountId={} uri={}", operation, accountId, uri);
         ResponseEntity<String> response = accountServiceRestClient.get()
@@ -136,6 +171,7 @@ public class AccountServiceClient {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (request, downstreamResponse) -> {
                     // Preserve Account Service error statuses/bodies for read-through endpoints.
+                    log.error("Error while calling account svc {}", downstreamResponse);
                 })
                 .toEntity(String.class);
         if (response.getStatusCode().isError()) {
@@ -148,6 +184,14 @@ public class AccountServiceClient {
         return response;
     }
 
+    /**
+     * Converts Resilience4j Account Service apply failures into retryable ledger results.
+     *
+     * @param accountId account id path variable from the original call
+     * @param request original Account Service transaction request
+     * @param throwable failure that triggered the fallback
+     * @return retryable failure result for ledger persistence
+     */
     @SuppressWarnings("unused")
     private AccountApplyResult fallbackApplyTransaction(
             String accountId,
@@ -159,6 +203,12 @@ public class AccountServiceClient {
         return AccountApplyResult.failure(throwable.getMessage());
     }
 
+    /**
+     * Extracts a useful rejection message from an Account Service error response.
+     *
+     * @param ex downstream response exception raised by {@link RestClient}
+     * @return downstream body when present, otherwise a status-based fallback message
+     */
     private String accountApplyErrorMessage(RestClientResponseException ex) {
         String responseBody = ex.getResponseBodyAsString();
         if (responseBody == null || responseBody.isBlank()) {
@@ -167,6 +217,13 @@ public class AccountServiceClient {
         return responseBody;
     }
 
+    /**
+     * Converts Resilience4j Account Service read failures into a stable gateway response.
+     *
+     * @param accountId account id path variable from the original read call
+     * @param throwable failure that triggered the fallback
+     * @return {@code 503} JSON response indicating Account Service unavailability
+     */
     @SuppressWarnings("unused")
     private ResponseEntity<String> fallbackReadAccount(String accountId, Throwable throwable) {
         log.warn("Account Service read failed for account {}: {}", accountId, throwable.getMessage());

@@ -28,6 +28,9 @@ public final class AccountServiceHttpContract {
     public static final String ACCOUNT_BALANCE_RESOURCE_TEMPLATE = "/accounts/{accountId}/balance";
     public static final String ACCOUNT_TRANSACTION_RESOURCE_TEMPLATE = "/accounts/{accountId}/transactions";
 
+    /**
+     * Prevents instantiation of the shared HTTP contract constants holder.
+     */
     private AccountServiceHttpContract() {
     }
 }

@@ -57,7 +57,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,loggers,circuitbreakers,circuitbreakerevents,bulkheads
+        include: health,info,metrics,prometheus,loggers,circuitbreakers,circuitbreakerevents,bulkheads
   endpoint:
     health:
       show-details: always

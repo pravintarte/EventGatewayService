@@ -7,6 +7,11 @@ import java.util.UUID;
  */
 public class EventNotFoundException extends RuntimeException {
 
+    /**
+     * Creates an exception for a ledger lookup that did not find the requested event.
+     *
+     * @param eventId missing event id supplied by the caller
+     */
     public EventNotFoundException(UUID eventId) {
         super("Event not found: " + eventId);
     }

@@ -129,7 +129,8 @@ public class EventLedgerService {
      */
     public List<EventResponse> listEventsForAccount(String accountId) {
         log.info("Listing ledger events accountId={}", accountId);
-        List<EventResponse> events = eventRecordRepository.findByAccountIdOrderByEventTimestampAscCreatedAtAscEventIdAsc(accountId)
+        List<EventResponse> events = eventRecordRepository
+                .findByAccountIdOrderByEventTimestampAscCreatedAtAscEventIdAsc(accountId)
                 .stream()
                 .map(eventRecordMapper::toEventResponse)
                 .toList();
@@ -227,6 +228,19 @@ public class EventLedgerService {
         );
     }
 
+    /**
+     * Applies a persisted ledger event to Account Service and saves the resulting state.
+     *
+     * <p>The method records every apply attempt before saving. Successful
+     * downstream calls transition the record to {@link ApplyStatus#APPLIED}.
+     * Retryable downstream failures keep the record retryable by setting
+     * {@link ApplyStatus#APPLY_FAILED} and computing the next attempt time.
+     * Permanent downstream rejections transition the record to
+     * {@link ApplyStatus#APPLY_REJECTED} so the scheduler does not retry it.</p>
+     *
+     * @param eventRecord persisted ledger record to apply
+     * @return saved ledger record after apply status updates
+     */
     private EventRecord applyAndSave(EventRecord eventRecord) {
         log.info("Applying ledger event to Account Service eventId={} accountId={} currentStatus={} nextAttempt={}",
                 eventRecord.getEventId(),

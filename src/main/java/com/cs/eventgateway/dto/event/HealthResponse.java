@@ -11,5 +11,10 @@ import java.util.Map;
  * @param timestamp server-side UTC timestamp
  * @param diagnostics basic component diagnostics
  */
-public record HealthResponse(String status, String service, Instant timestamp, Map<String, String> diagnostics) {
+public record HealthResponse(
+        String status,
+        String service,
+        Instant timestamp,
+        Map<String, String> diagnostics
+) {
 }
