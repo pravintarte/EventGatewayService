@@ -200,7 +200,9 @@
                 <version>${pact.version}</version>
                 <configuration>
                     <pactDirectory>${project.build.directory}/pacts</pactDirectory>
+                    <!--suppress UnresolvedMavenProperty -->
                     <pactBrokerUrl>${env.PACT_BROKER_BASE_URL}</pactBrokerUrl>
+                    <!--suppress UnresolvedMavenProperty -->
                     <pactBrokerToken>${env.PACT_BROKER_TOKEN}</pactBrokerToken>
                     <pactBrokerAuthenticationScheme>Bearer</pactBrokerAuthenticationScheme>
                     <projectVersion>${pacticipant.version}</projectVersion>
