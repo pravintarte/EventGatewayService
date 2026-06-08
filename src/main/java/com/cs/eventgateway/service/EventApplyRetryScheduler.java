@@ -1,5 +1,6 @@
 package com.cs.eventgateway.service;
 
+import com.cs.eventgateway.config.tracing.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,9 +23,11 @@ public class EventApplyRetryScheduler {
             initialDelayString = "${event-gateway.retry.initial-delay:30s}"
     )
     public void retryDueEvents() {
-        int attempted = eventLedgerService.retryDueEvents();
-        if (attempted > 0) {
-            log.info("Account Service apply retry cycle attempted {} event(s)", attempted);
+        try (TraceContext.TraceScope ignored = TraceContext.startNewTrace()) {
+            int attempted = eventLedgerService.retryDueEvents();
+            if (attempted > 0) {
+                log.info("Account Service apply retry cycle attempted {} event(s)", attempted);
+            }
         }
     }
 }

@@ -6,7 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.MDC;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -16,8 +18,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Ensures every inbound request has a stable trace id available to logs and downstream calls.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.LOWEST_PRECEDENCE)
 public class TraceContextFilter extends OncePerRequestFilter {
+
+    private final ObjectProvider<Tracer> tracerProvider;
+
+    public TraceContextFilter(ObjectProvider<Tracer> tracerProvider) {
+        this.tracerProvider = tracerProvider;
+    }
 
     @Override
     protected void doFilterInternal(
@@ -25,31 +33,31 @@ public class TraceContextFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        String previousTraceId = MDC.get(TraceContext.MDC_TRACE_ID_KEY);
-        String previousAppTraceId = MDC.get(TraceContext.MDC_APP_TRACE_ID_KEY);
-        String traceId = request.getHeader(TraceContext.TRACE_ID_HEADER);
+        String traceId = currentSpanTraceId();
+
         if (traceId == null || traceId.isBlank()) {
-            traceId = previousAppTraceId == null || previousAppTraceId.isBlank()
-                    ? TraceContext.newTraceId()
-                    : previousAppTraceId;
+            traceId = request.getHeader(TraceContext.TRACE_ID_HEADER);
         }
 
-        MDC.put(TraceContext.MDC_TRACE_ID_KEY, traceId);
-        MDC.put(TraceContext.MDC_APP_TRACE_ID_KEY, traceId);
-        response.setHeader(TraceContext.TRACE_ID_HEADER, traceId);
-        try {
-            filterChain.doFilter(request, response);
-        } finally {
-            if (previousTraceId == null || previousTraceId.isBlank()) {
-                MDC.remove(TraceContext.MDC_TRACE_ID_KEY);
-            } else {
-                MDC.put(TraceContext.MDC_TRACE_ID_KEY, previousTraceId);
-            }
-            if (previousAppTraceId == null || previousAppTraceId.isBlank()) {
-                MDC.remove(TraceContext.MDC_APP_TRACE_ID_KEY);
-            } else {
-                MDC.put(TraceContext.MDC_APP_TRACE_ID_KEY, previousAppTraceId);
-            }
+        if (traceId == null || traceId.isBlank()) {
+            traceId = TraceContext.newTraceId();
         }
+
+        response.setHeader(TraceContext.TRACE_ID_HEADER, traceId);
+        try (TraceContext.TraceScope ignored = TraceContext.startTrace(traceId)) {
+            filterChain.doFilter(request, response);
+        }
+    }
+
+    private String currentSpanTraceId() {
+        Tracer tracer = tracerProvider.getIfAvailable();
+        if (tracer == null) {
+            return null;
+        }
+        Span currentSpan = tracer.currentSpan();
+        if (currentSpan == null || currentSpan.context() == null) {
+            return null;
+        }
+        return currentSpan.context().traceId();
     }
 }

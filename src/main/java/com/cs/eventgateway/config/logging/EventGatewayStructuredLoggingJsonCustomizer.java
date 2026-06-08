@@ -23,13 +23,9 @@ public class EventGatewayStructuredLoggingJsonCustomizer
     @Override
     public void customize(JsonWriter.Members<ILoggingEvent> members) {
         members.add("serviceName", serviceName);
-        members.add("traceId", (event) -> traceId(event));
+        members.add("traceId", (event) -> mdcValue(event, TraceContext.MDC_TRACE_ID_KEY));
         members.add("spanId", (event) -> mdcValue(event, "spanId"));
-    }
-
-    private String traceId(ILoggingEvent event) {
-        String appTraceId = mdcValue(event, TraceContext.MDC_APP_TRACE_ID_KEY);
-        return appTraceId.isBlank() ? mdcValue(event, TraceContext.MDC_TRACE_ID_KEY) : appTraceId;
+        members.add("appTraceId", (event) -> mdcValue(event, TraceContext.MDC_APP_TRACE_ID_KEY));
     }
 
     private String mdcValue(ILoggingEvent event, String key) {

@@ -309,12 +309,15 @@ Account Service logs.
 
 Console logs are emitted as JSON using Spring Boot structured Logstash format.
 Each log line includes `timestamp`, `level`, `serviceName`, `traceId`, `spanId`,
-`logger`, `thread`, and `message`.
+`appTraceId`, `logger`, `thread`, and `message`.
 
 `serviceName` is populated from `spring.application.name`. `traceId` and
-`spanId` are populated from the tracing MDC when available; outside a traced
-request they are emitted as empty strings so downstream log queries can rely on
-stable fields.
+`spanId` are populated from Micrometer tracing and match the identifiers
+exported to Zipkin. `appTraceId` is the gateway correlation id propagated in the
+`X-Trace-Id` header; during traced HTTP requests it mirrors the Zipkin trace id.
+Callers that need to continue an existing distributed trace should send standard
+trace propagation headers such as `traceparent` or B3 headers, not a custom
+`X-Trace-Id` override.
 
 `GET /health` returns the public health envelope with basic diagnostics,
 including database connectivity. Actuator metrics are exposed under

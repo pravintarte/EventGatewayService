@@ -109,7 +109,9 @@ class GatewayAccountServiceFlowIntegrationTest {
 
         assertThat(ACCOUNT_SERVICE.applyCalls()).isEqualTo(2);
         assertThat(ACCOUNT_SERVICE.balanceCalls()).isEqualTo(1);
-        assertThat(ACCOUNT_SERVICE.lastTraceId()).isEqualTo("trace-full-flow");
+        assertThat(ACCOUNT_SERVICE.lastTraceId())
+                .isNotEqualTo("trace-full-flow")
+                .matches("[a-f0-9]{16}|[a-f0-9]{32}");
         assertThat(ACCOUNT_SERVICE.seenIdempotencyKeys())
                 .containsKeys(
                         "0bd17867-d631-44f1-ae8f-a6a726761785",

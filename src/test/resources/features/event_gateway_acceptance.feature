@@ -14,6 +14,13 @@ Feature: Event Gateway acceptance behavior
     And the response data field "status" is "APPLIED"
     And Account Service has applied 1 transaction
 
+  Scenario: Return the exported trace id in the gateway trace header
+    When I submit a valid CREDIT event "8aac4284-2db6-478d-9796-e5a06074d7ef" for account "acct-123" at "2026-05-15T14:02:11Z" with trace header "external-trace"
+    Then the response status is 201
+    And the response trace header is a Zipkin trace id
+    And the response trace header is not "external-trace"
+    And Account Service has applied 1 transaction
+
   Scenario: Ignore an exact duplicate event
     Given I submitted a valid CREDIT event "5ecf9f54-2f32-41b0-9b48-e879842f3fb5" for account "acct-123" at "2026-05-15T14:02:11Z"
     When I submit the same event again

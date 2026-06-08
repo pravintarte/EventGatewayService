@@ -93,6 +93,20 @@ public class EventGatewayAcceptanceSteps {
         submitEventJson(this.lastEventJson);
     }
 
+    @When("I submit a valid CREDIT event {string} for account {string} at {string} with trace header {string}")
+    public void iSubmitAValidCreditEventForAccountAtWithTraceHeader(
+            String eventId,
+            String accountId,
+            String eventTimestamp,
+            String traceHeader
+    ) throws Exception {
+        this.lastEventId = eventId;
+        this.lastAccountId = accountId;
+        this.lastEventTimestamp = eventTimestamp;
+        this.lastEventJson = validCreditEvent(eventId, accountId, eventTimestamp, "150.00");
+        submitEventJson(this.lastEventJson, traceHeader);
+    }
+
     @When("I submit the same event again")
     public void iSubmitTheSameEventAgain() throws Exception {
         assertThat(lastEventJson).isNotNull();
@@ -152,6 +166,16 @@ public class EventGatewayAcceptanceSteps {
         verify(accountServiceClient, times(expectedCount)).applyTransaction(any(), any());
     }
 
+    @Then("the response trace header is a Zipkin trace id")
+    public void theResponseTraceHeaderIsAZipkinTraceId() {
+        assertThat(responseTraceHeader()).matches("[a-f0-9]{16}|[a-f0-9]{32}");
+    }
+
+    @Then("the response trace header is not {string}")
+    public void theResponseTraceHeaderIsNot(String unexpectedTraceId) {
+        assertThat(responseTraceHeader()).isNotEqualTo(unexpectedTraceId);
+    }
+
     @Then("the events are returned in this order:")
     public void theEventsAreReturnedInThisOrder(DataTable dataTable) {
         List<String> expectedEventIds = dataTable.asList(String.class);
@@ -167,11 +191,25 @@ public class EventGatewayAcceptanceSteps {
     }
 
     private void submitEventJson(String eventJson) throws Exception {
-        this.lastResult = mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(eventJson))
-                .andReturn();
+        submitEventJson(eventJson, null);
+    }
+
+    private void submitEventJson(String eventJson, String traceHeader) throws Exception {
+        var request = post("/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson);
+        if (traceHeader != null && !traceHeader.isBlank()) {
+            request.header("X-Trace-Id", traceHeader);
+        }
+        this.lastResult = mockMvc.perform(request).andReturn();
         this.lastJson = readJson(lastResult);
+    }
+
+    private String responseTraceHeader() {
+        assertThat(lastResult).isNotNull();
+        String traceHeader = lastResult.getResponse().getHeader("X-Trace-Id");
+        assertThat(traceHeader).isNotBlank();
+        return traceHeader;
     }
 
     private JsonNode readJson(MvcResult result) throws Exception {
